@@ -375,13 +375,18 @@ int main(int argc, char *argv[])
 
   /* Source element for reading from the file */
   // source = gst_element_factory_make("filesrc", "file-source");
-  source = gst_element_factory_make("nvarguscamerasrc", "file-source");
+  source = gst_element_factory_make("nvarguscamerasrc", "csicam_source");
   g_object_set(G_OBJECT(source), "bufapi-version", TRUE, NULL);
-  g_object_set(G_OBJECT(source), "maxperf", TRUE, NULL);
+  // g_object_set(G_OBJECT(source), "sensor-id", 0, NULL);
+  // g_object_set(G_OBJECT(source), "maxperf", TRUE, NULL);
 
 
   src_caps = gst_element_factory_make("capsfilter", "src_caps_filter");  
-  capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=1920,height=1080,framerate=30/1");
+  capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=3264,height=2464,framerate=21/1");
+  // capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=3264,height=1848,framerate=28/1");
+  // capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=1920,height=1080,framerate=30/1");
+  // capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=1640,height=1232,framerate=30/1");
+  // capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=1280,height=720,framerate=60/1");
   g_object_set(G_OBJECT(src_caps), "caps", capssrc, NULL);
 
   /* Since the data format in the input file is elementary h264 stream,
@@ -414,7 +419,7 @@ int main(int argc, char *argv[])
   /* Set output file location */
   char *output_path = argv[2];
   strcat(output_path,"Pose_Estimation.mp4");
-  g_object_set(G_OBJECT(filesink), "location", output_path, NULL);
+  // g_object_set(G_OBJECT(filesink), "location", output_path, NULL);
   
   nvvideoconvert = gst_element_factory_make("nvvideoconvert", "nvvideo-converter1");
   tee = gst_element_factory_make("tee", "TEE");
@@ -604,7 +609,7 @@ int main(int argc, char *argv[])
                       osd_sink_pad_buffer_probe, (gpointer)fpssink, NULL);
 
   /* Set the pipeline to "playing" state */
-  g_print("Now playing: %s\n", argv[1]);
+  // g_print("Now playing: %s\n", argv[1]);
   gst_element_set_state(pipeline, GST_STATE_PLAYING);
   GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline");
 
