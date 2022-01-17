@@ -228,12 +228,12 @@ osd_sink_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
     display_meta->num_labels = 1;
     txt_params->display_text = (char *)g_malloc0(MAX_DISPLAY_LEN);
     offset = snprintf(txt_params->display_text, MAX_DISPLAY_LEN, "Frame Number =  %d", frame_number);
-    offset = snprintf(txt_params->display_text + offset, MAX_DISPLAY_LEN, "");
+    *(txt_params->display_text+offset) = 0; // offset = snprintf(txt_params->display_text + offset, MAX_DISPLAY_LEN, "");
 
     txt_params->x_offset = 10;
     txt_params->y_offset = 12;
 
-    txt_params->font_params.font_name = "Mono";
+    txt_params->font_params.font_name = (char*) "Mono";
     txt_params->font_params.font_size = 10;
     txt_params->font_params.font_color.red = 1.0;
     txt_params->font_params.font_color.green = 1.0;
@@ -565,6 +565,7 @@ int main(int argc, char *argv[])
   /* Set the pipeline to "playing" state */
   g_print("Now playing: %s\n", argv[1]);
   gst_element_set_state(pipeline, GST_STATE_PLAYING);
+  GST_DEBUG_BIN_TO_DOT_FILE(GST_BIN(pipeline), GST_DEBUG_GRAPH_SHOW_ALL, "pipeline");
 
   /* Wait till pipeline encounters an error or EOS */
   g_print("Running...\n");

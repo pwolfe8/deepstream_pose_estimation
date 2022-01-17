@@ -360,6 +360,15 @@ int main(int argc, char *argv[])
   /* Create Pipeline element that will form a connection of other elements */
   pipeline = gst_pipeline_new("deepstream-tensorrt-openpose-pipeline");
 
+  /* custom create egldisplay transform and sink */
+  // GstElement *dispT=NULL, *dispS=NULL;
+  // GstElement * displaySink;
+  // GError ** disperror;
+  // displaySink = gst_parse_bin_from_description ("nvegltransform ! nveglglessink", true, disperror);  
+  // dispT = gst_element_factory_make("nvegltransform", "d_trans");
+  // dispS = gst_element_factory_make("nveglglessink", "d_sink");
+  
+
   /* Source element for reading from the file */
   source = gst_element_factory_make("filesrc", "file-source");
 
@@ -411,11 +420,12 @@ int main(int argc, char *argv[])
   transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
 #endif
   nvsink = gst_element_factory_make("nveglglessink", "nvvideo-renderer");
-  sink = gst_element_factory_make("fpsdisplaysink", "fps-display");
+  // sink = gst_element_factory_make("fpsdisplaysink", "fps-display");
 
-  g_object_set(G_OBJECT(sink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
+  // g_object_set(G_OBJECT(sink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
 
-  if (!source || !h264parser || !decoder || !pgie || !nvvidconv || !nvosd || !sink || !cap_filter || !tee || !nvvideoconvert ||
+  if (!source || !h264parser || !decoder || !pgie || !nvvidconv || !nvosd || ! nvsink || // !sink || 
+      !cap_filter || !tee || !nvvideoconvert ||
       !h264encoder || !filesink || !queue || !qtmux || !h264parser1)
   {
     g_printerr("One element could not be created. Exiting.\n");
@@ -449,10 +459,14 @@ int main(int argc, char *argv[])
   /* Set up the pipeline */
   /* we add all elements into the pipeline */
 #ifdef PLATFORM_TEGRA
+  // gst_bin_add_many(GST_BIN(pipeline),
+  //                  source, h264parser, decoder, streammux, pgie,
+  //                  nvvidconv, nvosd, transform, /* sink, */
+  //                  tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
   gst_bin_add_many(GST_BIN(pipeline),
                    source, h264parser, decoder, streammux, pgie,
-                   nvvidconv, nvosd, transform, /*sink,*/
-                   tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
+                   nvvidconv, nvosd, transform, nvsink, NULL);
+                  //  tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
 #else
   gst_bin_add_many(GST_BIN(pipeline),
                    source, h264parser, decoder, streammux, pgie,
@@ -492,59 +506,66 @@ int main(int argc, char *argv[])
     g_printerr("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
-#if 0
-#ifdef PLATFORM_TEGRA
+  // custom
   if (!gst_element_link_many (streammux, pgie,
-          nvvidconv, nvosd, transform, sink, NULL)) {
+          nvvidconv, nvosd, transform, nvsink, NULL)) {
     g_printerr ("Elements could not be linked: 2. Exiting.\n");
     return -1;
   }
-#else
-  if (!gst_element_link_many (streammux, pgie, nvvidconv, nvosd, sink, NULL)) {
-    g_printerr ("Elements could not be linked: 2. Exiting.\n");
-    return -1;
-  }
-#endif
-#else
-#ifdef PLATFORM_TEGRA
-  if (!gst_element_link_many(streammux, pgie,
-                             nvvidconv, nvosd, tee, NULL))
-  {
-    g_printerr("Elements could not be linked: 2. Exiting.\n");
-    return -1;
-  }
-#else
-  if (!gst_element_link_many(streammux, pgie, nvvidconv, nvosd, tee, NULL))
-  {
-    g_printerr("Elements could not be linked: 2. Exiting.\n");
-    return -1;
-  }
-#endif
-#if 0
-  if (!link_element_to_tee_src_pad(tee, queue)) {
-      g_printerr ("Could not link tee to sink\n");
-      return -1;
-  }
-  if (!gst_element_link_many (queue, sink, NULL)) {
-    g_printerr ("Elements could not be linked: 2. Exiting.\n");
-    return -1;
-  }
-#else
-  if (!link_element_to_tee_src_pad(tee, queue))
-  {
-    g_printerr("Could not link tee to nvvideoconvert\n");
-    return -1;
-  }
-  if (!gst_element_link_many(queue, nvvideoconvert, cap_filter, h264encoder,
-                             h264parser1, qtmux, filesink, NULL))
-  {
-    g_printerr("Elements could not be linked\n");
-    return -1;
-  }
-#endif
 
-#endif
+// #if 0
+// #ifdef PLATFORM_TEGRA
+//   if (!gst_element_link_many (streammux, pgie,
+//           nvvidconv, nvosd, transform, nvsink, NULL)) {
+//     g_printerr ("Elements could not be linked: 2. Exiting.\n");
+//     return -1;
+//   }
+// #else
+//   if (!gst_element_link_many (streammux, pgie, nvvidconv, nvosd, sink, NULL)) {
+//     g_printerr ("Elements could not be linked: 2. Exiting.\n");
+//     return -1;
+//   }
+// #endif
+// #else
+// #ifdef PLATFORM_TEGRA
+//   if (!gst_element_link_many(streammux, pgie,
+//                              nvvidconv, nvosd, tee, NULL))
+//   {
+//     g_printerr("Elements could not be linked: 2. Exiting.\n");
+//     return -1;
+//   }
+// #else
+//   if (!gst_element_link_many(streammux, pgie, nvvidconv, nvosd, tee, NULL))
+//   {
+//     g_printerr("Elements could not be linked: 2. Exiting.\n");
+//     return -1;
+//   }
+// #endif
 
+// #if 0
+//   if (!link_element_to_tee_src_pad(tee, queue)) {
+//       g_printerr ("Could not link tee to sink\n");
+//       return -1;
+//   }
+//   if (!gst_element_link_many (queue, sink, NULL)) {
+//     g_printerr ("Elements could not be linked: 2. Exiting.\n");
+//     return -1;
+//   }
+// #else
+//   if (!link_element_to_tee_src_pad(tee, queue))
+//   {
+//     g_printerr("Could not link tee to nvvideoconvert\n");
+//     return -1;
+//   }
+//   if (!gst_element_link_many(queue, nvvideoconvert, cap_filter, h264encoder,
+//                              h264parser1, qtmux, filesink, NULL))
+//   {
+//     g_printerr("Elements could not be linked\n");
+//     return -1;
+//   }
+// #endif
+
+// #endif
 
   GstPad *pgie_src_pad = gst_element_get_static_pad(pgie, "src");
   if (!pgie_src_pad)
