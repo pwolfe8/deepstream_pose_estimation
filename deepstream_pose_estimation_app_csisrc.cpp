@@ -332,10 +332,14 @@ done:
 int main(int argc, char *argv[])
 {
   GMainLoop *loop = NULL;
-  GstCaps *caps = NULL;
-  GstElement *pipeline = NULL, *source = NULL, *h264parser = NULL,
-             *decoder = NULL, *streammux = NULL, *sink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
-             *nvvideoconvert = NULL, *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL, *nvsink = NULL;
+  GstCaps *caps = NULL, *capssrc = NULL;
+  GstElement *pipeline = NULL, *source = NULL, 
+            *src_caps = NULL,
+            *h264parser = NULL, *decoder = NULL,
+            *streammux = NULL, *fpssink = NULL, *pgie = NULL, *nvvidconv = NULL, *nvosd = NULL,
+            *nvvideoconvert = NULL, 
+            *nvsink = NULL,
+            *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL;
 
 /* Add a transform element for Jetson*/
 #ifdef PLATFORM_TEGRA
@@ -370,7 +374,15 @@ int main(int argc, char *argv[])
   
 
   /* Source element for reading from the file */
-  source = gst_element_factory_make("filesrc", "file-source");
+  // source = gst_element_factory_make("filesrc", "file-source");
+  source = gst_element_factory_make("nvarguscamerasrc", "file-source");
+  g_object_set(G_OBJECT(source), "bufapi-version", TRUE, NULL);
+  g_object_set(G_OBJECT(source), "maxperf", TRUE, NULL);
+
+
+  src_caps = gst_element_factory_make("capsfilter", "src_caps_filter");  
+  capssrc = gst_caps_from_string("video/x-raw(memory:NVMM),format=NV12,width=1920,height=1080,framerate=30/1");
+  g_object_set(G_OBJECT(src_caps), "caps", capssrc, NULL);
 
   /* Since the data format in the input file is elementary h264 stream,
    * we need a h264parser */
@@ -419,10 +431,11 @@ int main(int argc, char *argv[])
 #ifdef PLATFORM_TEGRA
   transform = gst_element_factory_make("nvegltransform", "nvegl-transform");
 #endif
-  nvsink = gst_element_factory_make("nveglglessink", "nvvideo-renderer");
-  // sink = gst_element_factory_make("fpsdisplaysink", "fps-display");
 
-  // g_object_set(G_OBJECT(sink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
+  // create display sink with fps 
+  nvsink = gst_element_factory_make("nveglglessink", "nvvideo-renderer");
+  fpssink = gst_element_factory_make("fpsdisplaysink", "fps-display");
+  g_object_set(G_OBJECT(fpssink), "text-overlay", FALSE, "video-sink", nvsink, "sync", FALSE, NULL);
 
   if (!source || !h264parser || !decoder || !pgie || !nvvidconv || !nvosd || ! nvsink || // !sink || 
       !cap_filter || !tee || !nvvideoconvert ||
@@ -464,8 +477,10 @@ int main(int argc, char *argv[])
   //                  nvvidconv, nvosd, transform, /* sink, */
   //                  tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
   gst_bin_add_many(GST_BIN(pipeline),
-                   source, h264parser, decoder, streammux, pgie,
-                   nvvidconv, nvosd, transform, nvsink, NULL);
+                   source, /*h264parser, decoder, */
+                   src_caps,
+                   streammux, pgie,
+                   nvvidconv, nvosd, transform, fpssink, NULL);
                   //  tee, nvvideoconvert, h264encoder, cap_filter, filesink, queue, h264parser1, qtmux, NULL);
 #else
   gst_bin_add_many(GST_BIN(pipeline),
@@ -485,7 +500,8 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  srcpad = gst_element_get_static_pad(decoder, pad_name_src);
+  // srcpad = gst_element_get_static_pad(decoder, pad_name_src);
+  srcpad = gst_element_get_static_pad(src_caps, pad_name_src);
   if (!srcpad)
   {
     g_printerr("Decoder request src pad failed. Exiting.\n");
@@ -501,14 +517,17 @@ int main(int argc, char *argv[])
   gst_object_unref(sinkpad);
   gst_object_unref(srcpad);
 
-  if (!gst_element_link_many(source, h264parser, decoder, NULL))
+  // if (!gst_element_link_many(source, h264parser, decoder, NULL))
+  if (!gst_element_link_many(source, src_caps, NULL))
   {
     g_printerr("Elements could not be linked: 1. Exiting.\n");
     return -1;
   }
+
+
   // custom
   if (!gst_element_link_many (streammux, pgie,
-          nvvidconv, nvosd, transform, nvsink, NULL)) {
+          nvvidconv, nvosd, transform, fpssink, NULL)) {
     g_printerr ("Elements could not be linked: 2. Exiting.\n");
     return -1;
   }
@@ -572,7 +591,7 @@ int main(int argc, char *argv[])
     g_print("Unable to get pgie src pad\n");
   else
     gst_pad_add_probe(pgie_src_pad, GST_PAD_PROBE_TYPE_BUFFER,
-                      pgie_src_pad_buffer_probe, (gpointer)sink, NULL);
+                      pgie_src_pad_buffer_probe, (gpointer)fpssink, NULL);
 
   /* Lets add probe to get informed of the meta data generated, we add probe to
    * the sink pad of the osd element, since by that time, the buffer would have
@@ -582,7 +601,7 @@ int main(int argc, char *argv[])
     g_print("Unable to get sink pad\n");
   else
     gst_pad_add_probe(osd_sink_pad, GST_PAD_PROBE_TYPE_BUFFER,
-                      osd_sink_pad_buffer_probe, (gpointer)sink, NULL);
+                      osd_sink_pad_buffer_probe, (gpointer)fpssink, NULL);
 
   /* Set the pipeline to "playing" state */
   g_print("Now playing: %s\n", argv[1]);
