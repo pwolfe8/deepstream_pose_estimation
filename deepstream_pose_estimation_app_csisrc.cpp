@@ -530,12 +530,20 @@ int main(int argc, char *argv[])
   }
 
 
+#ifdef PLATFORM_TEGRA
   // custom
   if (!gst_element_link_many (streammux, pgie,
           nvvidconv, nvosd, transform, fpssink, NULL)) {
     g_printerr ("Elements could not be linked: 2. Exiting.\n");
     return -1;
   }
+#else
+  if (!gst_element_link_many (streammux, pgie,
+          nvvidconv, nvosd, fpssink, NULL)) {
+    g_printerr ("Elements could not be linked: 2. Exiting.\n");
+    return -1;
+  }
+#endif
 
 // #if 0
 // #ifdef PLATFORM_TEGRA
