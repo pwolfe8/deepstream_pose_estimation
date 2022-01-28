@@ -341,10 +341,10 @@ int main(int argc, char *argv[])
             *nvsink = NULL,
             *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL;
 
-/* Add a transform element for Jetson*/
-#ifdef PLATFORM_TEGRA
+/* Add a transform element for EVERY PLATFORM*/
+// #ifdef PLATFORM_TEGRA
   GstElement *transform = NULL;
-#endif
+// #endif
   GstBus *bus = NULL;
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL;
