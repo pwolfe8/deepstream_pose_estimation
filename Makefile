@@ -23,6 +23,7 @@ SRCS:= deepstream_pose_estimation_app_csisrc.cpp
 
 
 INCS:= $(wildcard *.h)
+INCS+= $(wildcard *.hpp)
 
 PKGS:= gstreamer-1.0 gstreamer-video-1.0 x11 json-glib-1.0
 
