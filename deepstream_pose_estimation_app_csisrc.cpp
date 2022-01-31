@@ -60,9 +60,10 @@ void print_2d_vec(Vec2D<T> &vec)
     {
       for (int j = 0; j < vec[i].size(); j++)
       {
-        std::cout << " " << vec[i][j];
+        std::cout << "," << vec[i][j];
       }
-      std::cout << std::endl;
+      // std::cout << std::endl;
+      std::cout << " | ";
     }
     // std::cout << std::endl;
   }
@@ -82,6 +83,31 @@ void print_3d_vec(Vec3D<T> &vec)
     std::cout << "end 3D object: \n";
   }
 }
+
+template <typename T>
+void send_obj_keypoints(Vec3D<T> &vec)
+{
+  if( vec.size() > 0 ) {
+    std::stringstream sendstr;
+    // iterate through all people on screen 
+    for(int i=0; i<vec.size(); i++) {
+      // for each person iterate through the 18 keypoint coords (x_pixel, y_pixel)
+      // see human_pose.json for the corresponding 18 keypoint names
+      sendstr << "[";
+      for (int j=0; j<vec[0].size(); j++) {
+        sendstr << "(" << vec[i][j][0] << "," << vec[i][j][1] <<  "),";
+      }
+      sendstr << "]\n";
+    }
+    
+    client.send((char*) sendstr.str().c_str());
+  }
+ 
+}
+
+// #include <set>
+// std::set<int> obj_vals;
+// std::set<int> con_vals;
 
 /*Method to parse information returned from the model*/
 std::tuple<Vec2D<int>, Vec3D<float>>
@@ -112,6 +138,41 @@ parse_objects_from_tensor_meta(NvDsInferTensorMeta *tensor_meta)
   Vec3D<int> connections = assignment(score_graph, topology, counts, link_threshold, max_num_parts);
   /* Connecting all the Body Parts and Forming a Human Skeleton */
   Vec2D<int> objects = connect_parts(connections, topology, counts, max_num_objects);
+
+  // objects size:     1x18,    value_set: {-1, 0, 1}
+  // connections size: 21x2x20, value_set: {-1, 0, 1}
+
+  // for (int i=0; i<connections.size(); i++)
+  //   for (int j=0; j<connections[0].size(); j++)
+  //     for (int k=0; k<connections[0][0].size(); k++)
+  //       con_vals.insert(connections[i][j][k]);
+
+  // for (int i=0; i<objects.size(); i++)
+  //   for (int j=0; j<objects[0].size(); j++)
+  //     obj_vals.insert(objects[i][j]);
+
+  // for (std::set<int>::iterator it=con_vals.begin(); it!=con_vals.end(); ++it)
+  //   std::cout << *it << ", ";
+  // std::cout << std::endl;
+  // for (std::set<int>::iterator it=obj_vals.begin(); it!=obj_vals.end(); ++it)
+  //   std::cout << *it << ", ";
+  // std::cout << std::endl << std::endl;
+
+  // if (objects.size() > 0) {
+
+  // std::cout << "objects size: " << objects.size()
+  //   << " x " << objects[0].size()
+  //   << std::endl;
+
+  // std::cout << "connections size: " << connections.size()
+  //   << " x " << connections[0].size()
+  //   << " x " << connections[0][0].size()
+  //   << std::endl;
+
+  // print_2d_vec(objects);
+  // std::cout << std::endl;
+  // }
+
   return {objects, refined_peaks};
 }
 
@@ -125,10 +186,12 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
   NvDsDisplayMeta *dmeta = nvds_acquire_display_meta_from_pool(bmeta);
   nvds_add_display_meta_to_frame(frame_meta, dmeta);
 
+  // track keypoints for sending via network packet
+  Vec3D<int> obj_keypoints;
   for (auto &object : objects)
   {
-    int C = object.size();
-    for (int j = 0; j < C; j++)
+    Vec2D<int> my_keypoints; // should be 18
+    for (int j = 0; j < object.size(); j++)
     {
       int k = object[j];
       if (k >= 0)
@@ -136,6 +199,13 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         auto &peak = normalized_peaks[j][k];
         int x = peak[1] * MUXER_OUTPUT_WIDTH;
         int y = peak[0] * MUXER_OUTPUT_HEIGHT;
+
+        // store pixel coordinates of keypoint
+        Vec1D<int> coords;
+        coords.push_back(x);
+        coords.push_back(y);
+        my_keypoints.push_back(coords);
+
         if (dmeta->num_circles == MAX_ELEMENTS_IN_DISPLAY_META)
         {
           dmeta = nvds_acquire_display_meta_from_pool(bmeta);
@@ -144,13 +214,31 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         NvOSD_CircleParams &cparams = dmeta->circle_params[dmeta->num_circles];
         cparams.xc = x;
         cparams.yc = y;
-        cparams.radius = 8;
+        // make nose (0) and neck (17) bigger
+        if (j == 0 || j == 17)
+        {
+          cparams.radius = 25;
+        }
+        else
+        {
+          cparams.radius = 8;
+        }
         cparams.circle_color = NvOSD_ColorParams{244, 67, 54, 1};
         cparams.has_bg_color = 1;
         cparams.bg_color = NvOSD_ColorParams{0, 255, 0, 1};
         dmeta->num_circles++;
       }
+      else
+      {
+        // put a -1 as invalid coord for "joint not present"
+        Vec1D<int> coords;
+        coords.push_back(-1);
+        coords.push_back(-1);
+        my_keypoints.push_back(coords);
+      }
     }
+    // push back keypoints per person
+    obj_keypoints.push_back(my_keypoints);
 
     for (int k = 0; k < K; k++)
     {
@@ -179,6 +267,17 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         dmeta->num_lines++;
       }
     }
+  }
+  // if more than 0 people are present then send their keypoints
+  if (obj_keypoints.size() > 0)
+  {
+    // std::cout << "\nobj_keypoints size: "
+    // << obj_keypoints.size() << "x"
+    // << obj_keypoints[0].size() << std::endl;
+
+    // print_2d_vec(obj_keypoints[0]);
+
+    send_obj_keypoints(obj_keypoints);
   }
 }
 
@@ -212,15 +311,6 @@ pgie_src_pad_buffer_probe(GstPad *pad, GstPadProbeInfo *info,
         Vec3D<float> normalized_peaks;
         tie(objects, normalized_peaks) = parse_objects_from_tensor_meta(tensor_meta);
         create_display_meta(objects, normalized_peaks, frame_meta, frame_meta->source_frame_width, frame_meta->source_frame_height);
-
-        // if (printonce) {
-        if (objects.size() > 0)
-        {
-          print_2d_vec(objects);
-          print_3d_vec(normalized_peaks);
-        }
-        //   printonce = false;
-        // }
       }
     }
 
@@ -391,10 +481,10 @@ int main(int argc, char *argv[])
              *nvsink = NULL,
              *tee = NULL, *h264encoder = NULL, *cap_filter = NULL, *filesink = NULL, *queue = NULL, *qtmux = NULL, *h264parser1 = NULL;
 
-/* Add a transform element for EVERY PLATFORM*/
-// #ifdef PLATFORM_TEGRA
+  /* Add a transform element for EVERY PLATFORM*/
+  // #ifdef PLATFORM_TEGRA
   GstElement *transform = NULL;
-// #endif
+  // #endif
   GstBus *bus = NULL;
   guint bus_watch_id;
   GstPad *osd_sink_pad = NULL;
