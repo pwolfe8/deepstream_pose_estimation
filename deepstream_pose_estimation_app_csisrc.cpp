@@ -4,6 +4,7 @@
 #include "post_process.cpp"
 
 #include "UdpClient.hpp"
+#include "PoseFilter.hpp"
 
 #include <gst/gst.h>
 #include <glib.h>
@@ -49,6 +50,7 @@ using Vec3D = std::vector<Vec2D<T>>;
 gint frame_number = 0;
 
 UdpClient client("127.0.0.1", 6969);
+PoseFilter posefilter;
 
 gboolean printonce = true;
 
@@ -89,22 +91,37 @@ void print_3d_vec(Vec3D<T> &vec)
 template <typename T>
 void send_obj_keypoints(Vec3D<T> &vec)
 {
-  if( vec.size() > 0 ) {
+  if (vec.size() > 0)
+  {
     std::stringstream sendstr;
-    // iterate through all people on screen 
-    for(int i=0; i<vec.size(); i++) {
+    // iterate through all people on screen
+    for (int i = 0; i < vec.size(); i++)
+    {
       // for each person iterate through the 18 keypoint coords (x_pixel, y_pixel)
       // see human_pose.json for the corresponding 18 keypoint names
       sendstr << "[";
-      for (int j=0; j<vec[0].size(); j++) {
-        sendstr << "(" << vec[i][j][0] << "," << vec[i][j][1] <<  "),";
+      for (int j = 0; j < vec[0].size(); j++)
+      {
+        sendstr << "(" << vec[i][j][0] << "," << vec[i][j][1] << "),";
       }
       sendstr << "]\n";
     }
-    
-    client.send((char*) sendstr.str().c_str());
+
+    client.send((char *)sendstr.str().c_str());
   }
- 
+}
+
+void send_largest_person_center(Vec1D<int> &coord)
+{
+  if (coord.size() > 0)
+  {
+    std::stringstream sendstr;
+    sendstr << "(" << coord[0] << "," << coord[1] << ")\n";
+    client.send((char*) sendstr.str().c_str());
+    
+    // print out too
+    std::cout << "center: " << sendstr.str() << std::endl;
+  }
 }
 
 // #include <set>
@@ -216,18 +233,20 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
         NvOSD_CircleParams &cparams = dmeta->circle_params[dmeta->num_circles];
         cparams.xc = x;
         cparams.yc = y;
-        // make nose (0) and neck (17) bigger
-        if (j == 0 || j == 17)
-        {
-          cparams.radius = 25;
-        }
-        else
-        {
+        // make neck 17 bigger
+        // if (j == 17)
+        // {
+        //   cparams.radius = 16;
+        //   // cparams.circle_color = NvOSD_ColorParams{.red=1.0, .green=0.0, .blue=1.0, .alpha=1.0}; // make purple
+        // }
+        // else
+        // {
           cparams.radius = 8;
-        }
-        cparams.circle_color = NvOSD_ColorParams{244, 67, 54, 1};
-        cparams.has_bg_color = 1;
-        cparams.bg_color = NvOSD_ColorParams{0, 255, 0, 1};
+          cparams.circle_color = NvOSD_ColorParams{.red = 0.0, .green = 1.0, .blue = 0.0, .alpha = 1.0};
+        // }
+        // cparams.circle_color = NvOSD_ColorParams{244, 67, 54, 1};
+        cparams.has_bg_color = false;
+        // cparams.bg_color = NvOSD_ColorParams{0, 255, 0, 1};
         dmeta->num_circles++;
       }
       else
@@ -278,10 +297,37 @@ create_display_meta(Vec2D<int> &objects, Vec3D<float> &normalized_peaks, NvDsFra
     // << obj_keypoints[0].size() << std::endl;
 
     // print_2d_vec(obj_keypoints[0]);
+    bool valid = posefilter.process_new_keypoints(obj_keypoints);
+    if (valid)
+    {
+      std::cout << "valid , ";
+      Vec1D<int> largest_center_coord = posefilter.getLargestCenter();
+      send_largest_person_center(largest_center_coord);
 
-    send_obj_keypoints(obj_keypoints);
+      // also draw largest person center circle
+      if (dmeta->num_circles == MAX_ELEMENTS_IN_DISPLAY_META)
+      {
+        dmeta = nvds_acquire_display_meta_from_pool(bmeta);
+        nvds_add_display_meta_to_frame(frame_meta, dmeta);
+      }
+      NvOSD_CircleParams &cparams = dmeta->circle_params[dmeta->num_circles];
+      cparams.xc = largest_center_coord[0];
+      cparams.yc = largest_center_coord[1];
+      cparams.radius = 30;
+      // cparams.circle_color = NvOSD_ColorParams{.red = 0.0, .green = 1.0, .blue = 0.0, .alpha = 1.0}; // make green
+      // cparams.circle_color = NvOSD_ColorParams{.red = 1.0, .green = 0.0, .blue = 1.0, .alpha = 1.0}; // make purple
+      cparams.circle_color = NvOSD_ColorParams{.red = 1.0, .green = 0.0, .blue = 0.0, .alpha = 1.0}; // make red
+      cparams.has_bg_color = false;
+      dmeta->num_circles++;
+    }
   }
+  else
+  {
+    std::cout << std::endl;
+  }
+  // send_obj_keypoints(obj_keypoints);
 }
+
 
 /* pgie_src_pad_buffer_probe  will extract metadata received from pgie
  * and update params for drawing rectangle, object information etc. */
